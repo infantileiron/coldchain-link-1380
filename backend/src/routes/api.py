@@ -1,9 +1,9 @@
 import os,json
 import redis
-from fastapi import APIRouter,Depends,HTTPException,Response
+from fastapi import APIRouter,Depends,HTTPException,Response,Header
 from sqlalchemy.exc import IntegrityError
 from src.config.database import db
-from src.models.entities import User,Shipment,Sample,Study,Recommendation,Audit
+from src.models.entities import User,Shipment,Sample,Study,Recommendation,Audit,ModelVersion,Prediction
 from src.schemas.business import Login,ShipmentInput,SampleInput,StudyInput,RecommendationInput
 from src.middlewares.auth import current,editor,admin
 from src.utils.security import verify,token
@@ -80,3 +80,51 @@ def edit_sample(i:int,data:SampleInput,u=Depends(editor),s=Depends(db)):
  try:s.commit()
  except IntegrityError:s.rollback();raise HTTPException(409,'样本编号重复')
  audit(s,u,'修改样本 '+str(i));return dump(row)
+
+# ---- 货损率预警模型：训练、对比、上线、回滚、预测 ----
+from src.schemas.business import TrainInput,DeployInput,RollbackInput,PredictInput
+from src.services import modeling_service as models
+
+@router.get('/models')
+def models_overview(u=Depends(current),s=Depends(db)):
+ return models.compare(s)
+@router.post('/models/train')
+def models_train(data:TrainInput,u=Depends(editor),s=Depends(db)):
+ try:v=models.create_version(s,u.email,seed=data.seed,holdout_fraction=data.holdout_fraction)
+ except models.ModelError as e:raise HTTPException(e.status,e.message)
+ audit(s,u,'训练货损模型 '+v.label);return models.version_payload(v,include_input=True)
+@router.get('/models/deployments')
+def models_deployments(u=Depends(current),s=Depends(db)):
+ return models.deployment_history(s)
+@router.get('/models/{i}')
+def models_detail(i:int,u=Depends(current),s=Depends(db)):
+ v=s.get(ModelVersion,i)
+ if not v:raise HTTPException(404,'模型版本不存在')
+ return models.version_payload(v,include_input=True)
+@router.post('/models/{i}/deploy')
+def models_deploy(i:int,data:DeployInput,u=Depends(editor),s=Depends(db),request_key:str|None=Header(default=None,alias='Idempotency-Key')):
+ if data.version_id!=i:raise HTTPException(400,'路径版本与请求版本不一致')
+ try:row,created=models.deploy(s,i,u.email,request_key=data.request_key or request_key,note=data.note,expected_version_id=data.expected_version_id)
+ except models.ModelError as e:raise HTTPException(e.status,e.message)
+ if created:audit(s,u,'上线货损模型 '+str(i))
+ return {'created':created,'deployment':models.deployment_payload(row),'current_version_id':row.version_id}
+@router.post('/models/rollback')
+def models_rollback(data:RollbackInput,u=Depends(editor),s=Depends(db),request_key:str|None=Header(default=None,alias='Idempotency-Key')):
+ try:row,created=models.rollback(s,data.target_version_id,u.email,request_key=data.request_key or request_key,note=data.note,expected_version_id=data.expected_version_id)
+ except models.ModelError as e:raise HTTPException(e.status,e.message)
+ if created:audit(s,u,'回滚货损模型到 '+str(row.version_id))
+ return {'created':created,'deployment':models.deployment_payload(row),'current_version_id':row.version_id}
+@router.post('/predictions')
+def predictions(data:PredictInput,u=Depends(editor),s=Depends(db)):
+ try:version,rows=models.predict(s,u.email,data.expanded())
+ except models.ModelError as e:raise HTTPException(e.status,e.message)
+ audit(s,u,'货损预警预测 '+str(len(rows))+' 条（版本 '+version.label+'）')
+ return {'version':models.version_payload(version),'predictions':[models.prediction_payload(r) for r in rows]}
+@router.get('/predictions')
+def predictions_history(u=Depends(current),s=Depends(db)):
+ return models.prediction_history(s)
+@router.get('/predictions/{i}')
+def prediction_detail(i:int,u=Depends(current),s=Depends(db)):
+ r=s.get(Prediction,i)
+ if not r:raise HTTPException(404,'预测记录不存在')
+ return models.prediction_payload(r)

@@ -9,6 +9,13 @@ from src.middlewares.request import RequestId,SecurityHeaders
 @asynccontextmanager
 async def lifespan(app):
  Base.metadata.create_all(engine)
+ try:
+  from src.config.database import Session
+  from src.services.artifacts import ensure_artifact_root_writable
+  from src.services.modeling_service import reconcile_pointer
+  ensure_artifact_root_writable()
+  with Session() as s:reconcile_pointer(s)
+ except Exception:logging.exception('model artifact directory unavailable; model publish will fail closed')
  if os.getenv('SEED_DEMO')=='true':
   try:
    from scripts.seed_demo import seed

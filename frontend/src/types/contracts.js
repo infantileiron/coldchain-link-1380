@@ -1,2 +1,10 @@
 /** @typedef {{id:number,code:string,route:string,zone:string,driver:string}} Shipment */
 /** @typedef {{id:number,state:'queued'|'running'|'done'|'failed',result:object}} Study */
+/** @typedef {{holdout_mae:number,baseline_mae:number,improvement:number,holdout_r2:number,n_train:number,n_holdout:number,n_excluded:number,eligible:boolean,baseline_mean:number}} ModelMetrics */
+/** @typedef {{method:string,seed:number,train_shipments:number[],holdout_shipments:number[],train_samples:number[],holdout_samples:number[],groups_disjoint:boolean}} ModelSplit */
+/** @typedef {{feature:string,mean:number,std:number,impute:number,train_non_missing:number,train_missing:number}} FeatureStats */
+/** @typedef {{feature:string,label:string,value:number,input_value:number|null,imputed:boolean,z:number,contribution:number,direction:'up'|'down'|'neutral'|'unknown',text:string}} RiskReason */
+/** @typedef {{predicted_loss:number,predicted_raw:number,clamped:boolean,risk_reasons:RiskReason[],summary:string}} PredictionOutput */
+/** @typedef {{id:number,label:string,state:'candidate'|'active'|'retired'|'deployed'|'rejected',eligible:boolean,snapshot_hash:string,metrics:ModelMetrics,split:ModelSplit,coefficients:object,normalization:Record<string,FeatureStats>,reason:string,frozen_input?:object[]}} ModelVersion */
+/** @typedef {{id:number,version_id:number,previous_version_id:number|null,action:'deploy'|'rollback',request_key:string,actor:string,created:string}} Deployment */
+/** @typedef {{id:number,sample_id:number|null,version_id:number,version_label:string,snapshot_hash:string,input:object,output:PredictionOutput,actual_loss:number|null,created:string}} Prediction */

@@ -1,2 +1,5 @@
 -- Initial schema is created through SQLAlchemy Base.metadata.create_all.
 -- Natural keys: users.email, shipments.code, samples.code; unique constraints enforce idempotency.
+-- 货损预警新增表：model_versions（冻结训练输入与参数）、model_state（唯一上线指针）、
+-- model_deployments（上线/回滚记录，request_key 唯一以幂等重试）、model_locks（发布租约锁）、
+-- predictions（单笔预测的版本与参数副本，写入后不可变）。
